@@ -30,6 +30,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(opciones =>
 });
 
 builder.Services.AddScoped<IBicicletaRepository, BicicletaRepository>();
+builder.Services.AddScoped<IUsuarioRepository, UsuarioRepository>();
 
 //Agregamos el autoMapper
 builder.Services.AddAutoMapper(typeof(ParcialMapper));

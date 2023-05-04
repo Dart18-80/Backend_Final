@@ -4,6 +4,10 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.AspNetCore.Authorization;
+using AutoMapper;
+using Backend_Final.RepositoryPattern.IRepository;
+using Backend_Final.Models.Dtos;
+using Backend_Final.RepositoryPattern;
 
 namespace Backend_Final.Controllers
 {
@@ -11,21 +15,76 @@ namespace Backend_Final.Controllers
     [Route("api/user")]
     public class UserController : ControllerBase
     {
+
+        private readonly IUsuarioRepository _UsuarioRepository;
+        private readonly IMapper _mapper;
         private IConfiguration _config;
 
-        public UserController( IConfiguration config)
+        public UserController(IUsuarioRepository UsuarioRepository, IMapper mapper, IConfiguration config)
         {
+            _UsuarioRepository = UsuarioRepository;
+            _mapper = mapper;
             _config = config;
         }
 
-        private usuario AuthenticationUser (usuario User) 
+        [HttpPost]
+        [AllowAnonymous]
+        [ProducesResponseType(201, Type = typeof(UsuarioDTO))]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public IActionResult CrearUsuario([FromBody] UsuarioDTO crearUsuarioDto)
         {
-            usuario _user = null;
-            if( User.UserName == "Diego" && User.Password == "Test123") 
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (crearUsuarioDto == null)
+                return BadRequest(ModelState);
+
+            if (_UsuarioRepository.ExisteUsuario(crearUsuarioDto.UserName))
             {
-                _user = new usuario { UserName = "Diego Ruiz" };
+                ModelState.AddModelError("", "El ya existe");
+                return StatusCode(404, ModelState);
             }
-            return _user;
+
+            var usuario = _mapper.Map<usuario>(crearUsuarioDto);
+            if (!_UsuarioRepository.CrearUsuario(usuario))
+            {
+                ModelState.AddModelError("", $"Algo Salio mal guardando el registro {usuario.UserName}");
+                return StatusCode(500, ModelState);
+            }
+
+            return CreatedAtRoute("GetUsuario", new { usuarioId = usuario.Id }, usuario);
+        }
+
+        [HttpPost("/login")]
+        [AllowAnonymous]
+        [ProducesResponseType(201, Type = typeof(UsuarioDTO))]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public IActionResult LoginUsuario([FromBody] UsuarioDTO LoginUsuarioDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (LoginUsuarioDto == null)
+                return BadRequest(ModelState);
+
+            var itemUsuario = _UsuarioRepository.GetUsuario(LoginUsuarioDto.UserName);
+
+            if (itemUsuario == null)
+                return NotFound();
+
+            IActionResult response = Unauthorized();
+
+            if (itemUsuario.UserName.ToLower().Trim() == LoginUsuarioDto.UserName.ToLower().Trim() && itemUsuario.Password.ToLower().Trim() == LoginUsuarioDto.Password.ToLower().Trim())
+            {
+                var token = GenerateToken(itemUsuario);
+                response = Ok(new { token = token });
+            }
+
+            return response;
         }
 
         private string GenerateToken( usuario User) 
@@ -37,20 +96,6 @@ namespace Backend_Final.Controllers
                 expires: DateTime.Now.AddMinutes(2),
                 signingCredentials: credentials);
             return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
-        [AllowAnonymous]
-        [HttpPost]
-        public IActionResult Login(usuario user) 
-        {
-            IActionResult response = Unauthorized();
-            var _user = AuthenticationUser(user);
-            if(_user != null) 
-            {
-                var token = GenerateToken(user);
-                response = Ok(new { token = token});
-            }
-            return response;
         }
     }
 }
